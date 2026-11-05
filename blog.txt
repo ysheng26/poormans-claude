@@ -1,0 +1,43 @@
+
+
+1. ollama setup, have local LLM running
+2. spin up go application to talk to it (no openapi sdk)
+
+# tools
+3. do a get_time tool the manual way
+4. introduce openai sdk
+5. do a get_time tool with openai sdk
+6. add agent loop, essentially call tools until no more need
+
+# mcp
+7. introduce mcp server and mcp tool
+8. do a get_time with mcp server and mcp tool
+
+# skills
+9. do a "my skill format"
+10. progressive disclosure my skill format
+11. implement the Agent Skill format
+
+
+
+------------------------------
+
+Suggested revised outline
+Section Topic
+Foundations
+1 Set up Ollama and run a local LLM
+2 Build a Go chatbot using HTTP/JSON, without an SDK
+Tools
+3 Implement get_time using a homemade tool-calling protocol
+4 Introduce the OpenAI SDK and its tool-calling convention
+5 Reimplement get_time using the OpenAI SDK
+6 Build a reusable tool registry and agent loop
+MCP
+7 Introduce MCP servers, clients, and tools
+8 Expose get_time through a Go MCP server
+9 Connect your Go agent to the MCP server, discover and invoke tools
+Skills
+10 Create your own skill format and load_skill mechanism
+11 Implement progressive disclosure (load_skill, read_skill_file)
+12 Replace your custom format with the Agent Skills specification
+
