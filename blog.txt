@@ -1,7 +1,12 @@
 
 
 1. ollama setup, have local LLM running
+ollama pull qwen2.5-coder:7b
+ollama run qwen2.5-coder:7b
+ollama serve
+
 2. spin up go application to talk to it (no openapi sdk)
+https://docs.ollama.com/api/chat
 
 # tools
 3. do a get_time tool the manual way
