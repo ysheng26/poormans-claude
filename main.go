@@ -16,32 +16,12 @@ const (
 	RoleAssistant = "assistant"
 )
 
-/*
-Messages =[]
-for {
-  Get user input
-  Append to Messages
-  Send Messages to LLM
-  Append response to Messages
-  Display response
-}
-*/
-
-// https://developers.openai.com/api/docs/libraries?language=golang
-
-// role: user | assistant
-
 type Message struct {
 	Role    string `json:"role"`
 	Content string `json:"content"`
 }
 
 func main() {
-	// client := openai.NewClient(
-	// 	option.WithBaseURL("http://localhost:11434/v1"),
-	// 	option.WithAPIKey("ollama"),
-	// )
-
 	fmt.Println("poorman's codex")
 
 	var chatHistory []Message
@@ -103,18 +83,3 @@ func sendToLLM(messages []Message) Message {
 	}
 	return r.Message
 }
-
-// func sendToLLM(client openai.Client, message string) string {
-// 	response, err := client.Responses.New(context.TODO(),
-// 		responses.ResponseNewParams{
-// 			Model: "qwen2.5-coder:7b",
-// 			Input: responses.ResponseNewParamsInputUnion{
-// 				OfString: openai.String(message),
-// 			},
-// 		})
-// 	if err != nil {
-// 		panic(err)
-// 	}
-
-// 	return response.OutputText()
-// }
