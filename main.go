@@ -2,85 +2,42 @@ package main
 
 import (
 	"bufio"
-	"bytes"
-	"encoding/json"
+	"context"
 	"fmt"
-	"io"
-	"net/http"
 	"os"
-	"regexp"
-	"time"
+
+	"github.com/anthropics/anthropic-sdk-go/v2"
+	"github.com/anthropics/anthropic-sdk-go/v2/option"
 )
 
 const (
-	Model         = "qwen2.5-coder:7b"
-	RoleUser      = "user"
-	RoleAssistant = "assistant"
-	RoleSystem    = "system"
-	RoleTool      = "tool"
+	ModelQwen = "qwen2.5-coder:7b"
 )
 
-type Message struct {
-	Role    string `json:"role"`
-	Content string `json:"content"`
-}
-
-const getTimeToolPrompt = `
-I am providing you a tool which could tell you time.
-When you need to call the tool you say it to me like the following [YOYO]get_time[/YOYO]. and I would return the result to you with [SUPSUP]time[/SUPSUP]
-
-Get the time from between [SUPSUP][/SUPSUP]
-
-For example in 
-[SUPSUP]2026-11-07 11:00:56.810491 -0500 EST m=+2.747323334[/SUPSUP]
-the time is 2026-11-07 11:00:56.810491 -0500 EST m=+2.747323334
-
-DO NOT return the SUPSUP tags to user
-
-`
-
-const getTimeToolRegexRaw = `\[YOYO\](.*)\[\/YOYO\]`
-
-/*
-tool prompt
-parse tool response
-execute tool
-*/
-
 func main() {
-	fmt.Println("poorman's codex")
+	fmt.Println("poorman's claude")
+	client := anthropic.NewClient(
+		option.WithAPIKey("ollama"),
+		option.WithBaseURL("http://localhost:11434"),
+	)
 
-	var chatHistory []Message
-	getTimeToolMessage := Message{Role: RoleTool, Content: getTimeToolPrompt}
-	getTimeToolRegex := regexp.MustCompile(getTimeToolRegexRaw)
-
-	chatHistory = append(chatHistory, getTimeToolMessage)
+	var chatHistory []anthropic.MessageParam
 
 	scanner := bufio.NewScanner(os.Stdin)
 	for scanner.Scan() {
 		userInput := scanner.Text()
 
-		chatHistory = append(chatHistory, Message{Role: RoleUser, Content: userInput})
+		userMessage := anthropic.NewUserMessage(anthropic.NewTextBlock(userInput))
+		chatHistory = append(chatHistory, userMessage)
 
-		llmMessage := sendToLLM(chatHistory)
-
-		matches := getTimeToolRegex.FindStringSubmatch(llmMessage.Content)
-
-		for matches != nil {
-			if matches[1] == "get_time" {
-				timeResult := Message{
-					Role:    RoleTool,
-					Content: fmt.Sprintf("[SUPSUP]%s[/SUPSUP]", time.Now()),
-				}
-				chatHistory = append(chatHistory, timeResult)
-				llmMessage = sendToLLM(chatHistory)
-				matches = getTimeToolRegex.FindStringSubmatch(llmMessage.Content)
+		llmMessage := sendToLLM(client, chatHistory)
+		for _, block := range llmMessage.Content {
+			if textBlock, ok := block.AsAny().(anthropic.TextBlock); ok {
+				fmt.Printf("< %s\n", textBlock.Text)
 			}
 		}
 
-		fmt.Printf("< %s\n", llmMessage.Content)
-
-		chatHistory = append(chatHistory, llmMessage)
+		chatHistory = append(chatHistory, llmMessage.ToParam())
 	}
 
 	if err := scanner.Err(); err != nil {
@@ -88,43 +45,14 @@ func main() {
 	}
 }
 
-func sendToLLM(messages []Message) Message {
-
-	type payload struct {
-		Model    string    `json:"model"`
-		Messages []Message `json:"messages"`
-		Stream   bool      `json:"stream"`
-	}
-
-	p := payload{
-		Model:    Model,
-		Messages: messages,
-		Stream:   false,
-	}
-
-	b, err := json.Marshal(p)
+func sendToLLM(client anthropic.Client, messages []anthropic.MessageParam) *anthropic.Message {
+	message, err := client.Messages.New(context.TODO(), anthropic.MessageNewParams{
+		MaxTokens: 1024,
+		Messages:  messages,
+		Model:     ModelQwen,
+	})
 	if err != nil {
 		panic(err)
 	}
-
-	resp, err := http.Post("http://localhost:11434/api/chat", "application/json", bytes.NewBuffer(b))
-	if err != nil {
-		panic(err)
-	}
-	defer resp.Body.Close()
-
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		panic(err)
-	}
-
-	type response struct {
-		Message Message `json:"message"`
-	}
-	var r response
-	err = json.Unmarshal(body, &r)
-	if err != nil {
-		panic(err)
-	}
-	return r.Message
+	return message
 }
