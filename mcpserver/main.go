@@ -27,13 +27,11 @@ func LoadSkill(ctx context.Context, req *mcp.CallToolRequest, input LoadSkillInp
 	LoadSkillOutput,
 	error,
 ) {
-	fmt.Println("LoadSkill invoked")
+	fmt.Printf("LoadSkill invoked for %s\n", input.Name)
 	if skillDirPath == "" {
 		return nil, LoadSkillOutput(""), errors.New("no skill dir path")
 	}
 
-	// read dir and build hashmap from scratch
-	// return the entire string
 	xs, err := os.ReadDir(skillDirPath)
 	if err != nil {
 		panic(err)
