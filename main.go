@@ -3,27 +3,26 @@ package main
 import (
 	"bufio"
 	"context"
+	"encoding/json"
 	"fmt"
-	"io"
-	"net/http"
 	"os"
+	"os/exec"
+	"strings"
 
 	"github.com/anthropics/anthropic-sdk-go/v2"
 	"github.com/anthropics/anthropic-sdk-go/v2/option"
 	"github.com/anthropics/anthropic-sdk-go/v2/toolrunner"
+	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
 // https://github.com/anthropics/anthropic-sdk-go/blob/main/tools.md
+
+// https://github.com/modelcontextprotocol/go-sdk
 
 const (
 	// ModelQwen = "qwen2.5-coder:7b"
 	ModelQwen = "qwen3:8b"
 )
-
-type GetWeatherInput struct {
-	City  string `json:"city" jsonschema:"required,description=The city name"`
-	Units string `json:"units,omitempty" jsonschema:"enum=celsius,enum=fahrenheit,description=Temperature units"`
-}
 
 func main() {
 	fmt.Println("poorman's claude")
@@ -32,7 +31,8 @@ func main() {
 		option.WithBaseURL("http://localhost:11434"),
 	)
 
-	weatherTool := newWeatherTool()
+	tools, cleanup := discoverTools()
+	defer cleanup()
 
 	var chatHistory []anthropic.BetaMessageParam
 
@@ -44,7 +44,7 @@ func main() {
 		chatHistory = append(chatHistory, userMessage)
 
 		runner := client.Beta.Messages.NewToolRunner(
-			[]anthropic.BetaTool{weatherTool},
+			tools,
 			anthropic.BetaToolRunnerParams{
 				BetaMessageNewParams: anthropic.BetaMessageNewParams{
 					MaxTokens: 1024,
@@ -78,39 +78,81 @@ func main() {
 
 }
 
-func newWeatherTool() anthropic.BetaTool {
-	weatherTool, err := toolrunner.NewBetaToolFromJSONSchema(
-		"get_weather",
-		"Get current weather for a city",
-		func(ctx context.Context, input GetWeatherInput) (anthropic.BetaToolResultBlockParamContentUnion, error) {
-			// wttr.in/Beijing based
-			resp, err := http.Get(fmt.Sprintf("https://wttr.in/%s?format=3", input.City))
-			if err != nil {
-				panic(err)
-			}
-			defer resp.Body.Close()
+func discoverTools() ([]anthropic.BetaTool, func()) {
+	ctx := context.Background()
 
-			if resp.StatusCode != http.StatusOK {
-				panic("non 200 status code")
-			}
-
-			b, err := io.ReadAll(resp.Body)
-			if err != nil {
-				panic(err)
-			}
-
-			return anthropic.BetaToolResultBlockParamContentUnion{
-				OfText: &anthropic.BetaTextBlockParam{
-					Text: string(b),
-				},
-			}, nil
-		},
+	mcpClient := mcp.NewClient(
+		&mcp.Implementation{Name: "poorman", Version: "v0.0.0"},
+		nil,
 	)
+
+	cmd := exec.Command("go", "run", "./mcpserver")
+	cmd.Stderr = os.Stderr
+
+	session, err := mcpClient.Connect(ctx, &mcp.CommandTransport{Command: cmd}, nil)
 	if err != nil {
 		panic(err)
 	}
 
-	return weatherTool
+	cleanup := func() {
+		session.Close()
+	}
+
+	var tools []anthropic.BetaTool
+
+	for mcptool, err := range session.Tools(ctx, nil) {
+		if err != nil {
+			panic(err)
+		}
+
+		mcptoolSchema, err := json.Marshal(mcptool.InputSchema)
+		if err != nil {
+			panic(err)
+		}
+
+		// toolrunner.NewBetaTool()
+		t, err := toolrunner.NewBetaToolFromBytes(
+			mcptool.Name,
+			mcptool.Description,
+			mcptoolSchema,
+			func(ctx context.Context, input json.RawMessage) (
+				anthropic.BetaToolResultBlockParamContentUnion, error,
+			) {
+				result, err := session.CallTool(ctx, &mcp.CallToolParams{
+					Name:      mcptool.Name,
+					Arguments: input,
+				})
+				if err != nil {
+					return anthropic.BetaToolResultBlockParamContentUnion{}, err
+				}
+
+				var parts []string
+				for _, content := range result.Content {
+					if text, ok := content.(*mcp.TextContent); ok {
+						parts = append(parts, text.Text)
+					}
+				}
+				text := strings.Join(parts, "\n")
+
+				if result.IsError {
+					return anthropic.BetaToolResultBlockParamContentUnion{}, fmt.Errorf("MCP tool failed: %s", text)
+				}
+
+				return anthropic.BetaToolResultBlockParamContentUnion{
+					OfText: &anthropic.BetaTextBlockParam{Text: text},
+				}, nil
+
+			},
+		)
+
+		if err != nil {
+			panic(err)
+		}
+
+		tools = append(tools, t)
+	}
+
+	return tools, cleanup
 }
 
 func sendToLLM(client anthropic.Client, messages []anthropic.BetaMessageParam) *anthropic.BetaMessage {
