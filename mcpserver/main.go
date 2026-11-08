@@ -42,7 +42,16 @@ func GetWeather(ctx context.Context, req *mcp.CallToolRequest, input GetWeatherI
 func main() {
 	server := mcp.NewServer(&mcp.Implementation{Name: "Yun's Server", Version: "v0.0.0"}, nil)
 	mcp.AddTool(server, &mcp.Tool{Name: "get_weather", Description: "Get current weather for a city"}, GetWeather)
-	err := server.Run(context.Background(), &mcp.StdioTransport{})
+
+	handler := mcp.NewStreamableHTTPHandler(
+		func(r *http.Request) *mcp.Server {
+			return server
+		},
+		nil,
+	)
+
+	fmt.Println("starting server")
+	err := http.ListenAndServe("127.0.0.1:7777", handler)
 	if err != nil {
 		panic(err)
 	}

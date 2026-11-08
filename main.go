@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
-	"os/exec"
 	"strings"
 
 	"github.com/anthropics/anthropic-sdk-go/v2"
@@ -86,10 +85,10 @@ func discoverTools() ([]anthropic.BetaTool, func()) {
 		nil,
 	)
 
-	cmd := exec.Command("go", "run", "./mcpserver")
-	cmd.Stderr = os.Stderr
-
-	session, err := mcpClient.Connect(ctx, &mcp.CommandTransport{Command: cmd}, nil)
+	session, err := mcpClient.Connect(
+		ctx,
+		&mcp.StreamableClientTransport{Endpoint: "http://127.0.0.1:7777"},
+		nil)
 	if err != nil {
 		panic(err)
 	}
