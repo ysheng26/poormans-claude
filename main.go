@@ -6,12 +6,14 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/anthropics/anthropic-sdk-go/v2"
 	"github.com/anthropics/anthropic-sdk-go/v2/option"
 	"github.com/anthropics/anthropic-sdk-go/v2/toolrunner"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
+	"github.com/pb33f/go-yaml"
 )
 
 // https://github.com/anthropics/anthropic-sdk-go/blob/main/tools.md
@@ -22,6 +24,12 @@ const (
 	// ModelQwen = "qwen2.5-coder:7b"
 	ModelQwen = "qwen3:8b"
 )
+
+type MySkill struct {
+	Name        string `yaml:"name"`
+	Description string `yaml:"description"`
+	// Leaving instructions out to show progressive disclosure
+}
 
 func main() {
 	fmt.Println("poorman's claude")
@@ -35,6 +43,8 @@ func main() {
 
 	var chatHistory []anthropic.BetaMessageParam
 
+	skillCatalog := discoverSkills()
+
 	scanner := bufio.NewScanner(os.Stdin)
 	for scanner.Scan() {
 		userInput := scanner.Text()
@@ -46,6 +56,9 @@ func main() {
 			tools,
 			anthropic.BetaToolRunnerParams{
 				BetaMessageNewParams: anthropic.BetaMessageNewParams{
+					System: []anthropic.BetaTextBlockParam{
+						{Text: skillCatalog},
+					},
 					MaxTokens: 1024,
 					Messages:  chatHistory,
 					Model:     ModelQwen,
@@ -75,6 +88,39 @@ func main() {
 		fmt.Fprintln(os.Stderr, "reading standard input:", err)
 	}
 
+}
+
+func discoverSkills() string {
+	dirPath := "skills"
+	skillFiles, err := os.ReadDir(dirPath)
+	if err != nil {
+		panic(err)
+	}
+
+	var res []string
+	res = append(res, "Available skills:")
+
+	for _, f := range skillFiles {
+		if f.IsDir() {
+			continue
+		}
+		filePath := filepath.Join(dirPath, f.Name())
+		b, err := os.ReadFile(filePath)
+		if err != nil {
+			panic(err)
+		}
+
+		var skill MySkill
+		err = yaml.Unmarshal(b, &skill)
+		if err != nil {
+			panic(err)
+		}
+
+		s := fmt.Sprintf("- %s: %s\n", skill.Name, skill.Description)
+		res = append(res, s)
+	}
+
+	return strings.Join(res, "\n")
 }
 
 func discoverTools() ([]anthropic.BetaTool, func()) {
